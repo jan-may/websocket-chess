@@ -1,1 +1,2 @@
-npm run prettier-format && npm run lint && npm run test
+cd server && npm run prettier-format && npm run lint && npm run test
+cd .. && cd frontend && npm run prettier-format && npm run lint && npm run test

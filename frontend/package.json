@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prettier-format": "prettier --config .prettierrc src/**/*.ts --write",
+    "test": "echo \" no test specified for now :)\" && exit 0"
   },
   "dependencies": {
     "react": "^18.2.0",
