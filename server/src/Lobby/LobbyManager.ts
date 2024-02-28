@@ -1,66 +1,73 @@
-import { WebSocket } from 'ws';
+import { Server } from 'ws';
 import { Lobby } from './Lobby';
 import { LobbyBuilder } from './LobbyBuilder';
 
 export class LobbyManager {
-  private lobbies: Lobby[] = [];
+  private lobbies: Map<string, Lobby> = new Map();
+  private wss: Server;
+  constructor(wss: Server) {
+    this.wss = wss;
+  }
 
-  joinOrCreateLobby(player: WebSocket) {
-    // Attempt to join an existing lobby
-    const availableLobby = this.lobbies.find((lobby) => !lobby.isfull());
-    if (availableLobby) {
-      availableLobby.joinGame(player);
-      console.log(`Player joined existing lobby: ${availableLobby.id}`);
+  createLobby() {
+    const id = 'lobby_' + (this.lobbies.size + 1);
+    const lobby = new LobbyBuilder(id).build();
+    this.lobbies.set(id, lobby);
+    return lobby;
+  }
+
+  createCustomLobby(maxPlayers: number, gameType: string) {
+    const id = 'lobby_' + (this.lobbies.size + 1) + '_custom';
+    const lobby = new LobbyBuilder(id).setMaxPlayers(maxPlayers).setGameType(gameType).build();
+    this.lobbies.set(id, lobby);
+    return lobby;
+  }
+
+  getLobbyCount() {
+    return this.lobbies.size;
+  }
+
+  getLobby(id: string) {
+    return this.lobbies.get(id);
+  }
+
+  getAllLobbies() {
+    return Array.from(this.lobbies.values());
+  }
+
+  joinLobby(uid: string) {
+    const lobby = Array.from(this.lobbies.values()).find((l) => !l.isfull());
+    if (lobby) {
+      lobby.joinGame(uid);
     } else {
-      // Create a new lobby
-      const newLobbyId = `lobby_${this.lobbies.length + 1}`;
-      const newLobby = new LobbyBuilder(newLobbyId).build();
-      newLobby.joinGame(player);
-      this.lobbies.push(newLobby);
-      console.log(`Player created and joined new lobby: ${newLobbyId}`);
+      this.createLobby().joinGame(uid);
     }
   }
 
-  // This method allows for removing a player from any lobby. Useful for player disconnections.
-  removePlayerFromLobby(player: WebSocket) {
-    this.lobbies.forEach((lobby) => {
-      if (lobby.players.includes(player)) {
-        lobby.removePlayer(player);
-        console.log(`Player removed from lobby: ${lobby.id}`);
-      }
-    });
-
-    // Optional: Clean up empty lobbies
-    // this.cleanupEmptyLobbies();
-  }
-
-  // Optional: Remove lobbies that have become empty
-  cleanupEmptyLobbies() {
-    this.lobbies = this.lobbies.filter((lobby) => lobby.players.length > 0);
-  }
-
-  getLobbiesState() {
-    return {
-      activeLobbies: this.getActiveLobbies(),
-      totalPlayers: this.getTotalPlayers()
-    };
-  }
-
-  private getActiveLobbies() {
-    return this.lobbies;
-  }
-
-  private getTotalPlayers() {
-    return this.lobbies.reduce((acc, lobby) => acc + lobby.players.length, 0);
-  }
-
-  getLobbyStateForPlayer(player: WebSocket) {
-    const playerLobby = this.lobbies.find((lobby) =>
-      lobby.players.includes(player)
-    );
-    if (playerLobby) {
-      return playerLobby.getLobbyState();
+  joinLobbyById(uid: string, id: string) {
+    const lobby = this.lobbies.get(id);
+    if (lobby) {
+      lobby.joinGame(uid);
     }
-    return null;
+  }
+
+  leaveLobby(uid: string) {
+    const lobby = Array.from(this.lobbies.values()).find((l) => l.players.includes(uid));
+    if (lobby) {
+      lobby.removePlayer(uid);
+    }
+  }
+
+  getLobbyByPlayer(uid: string) {
+    return Array.from(this.lobbies.values()).find((l) => l.players.includes(uid));
+  }
+
+  getTotalPlayersInLobbies() {
+    return Array.from(this.lobbies.values()).reduce((acc, l) => acc + l.players.length, 0);
+  }
+
+  getPlayersInLobby(lobbyId: string) {
+    const lobby = this.lobbies.get(lobbyId);
+    return lobby ? lobby.players : [];
   }
 }
