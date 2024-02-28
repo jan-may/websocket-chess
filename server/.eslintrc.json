@@ -17,7 +17,7 @@
   "plugins": ["prettier", "@typescript-eslint"],
   "rules": {
     "react/prop-types": "off",
-    "no-console": "warn",
+    "no-console": "off",
     "import/prefer-default-export": "off",
     "prettier/prettier": "error",
     "import/extensions": "off"
