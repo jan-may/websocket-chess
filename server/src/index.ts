@@ -1,52 +1,41 @@
 import express from 'express';
-import { Server as WebSocketServer } from 'ws';
+import { WebSocket, Server as WebSocketServer } from 'ws';
 import http from 'http';
+import { ConnectionManager } from './Connection/ConnectionManager';
 import { LobbyManager } from './Lobby/LobbyManager';
+import { MESSAGE_TYPES } from './utils/constants';
 
 const app = express();
 const port = process.env.PORT || 3001;
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-const lobbyManager = new LobbyManager();
+const connectionManager = new ConnectionManager(wss);
+const lobbyManager = new LobbyManager(wss);
 
 wss.on('connection', (ws) => {
-  console.log('Client connected');
+  connectionManager.addConnection(ws);
+  sendUpdatedConnectionCount();
+
   ws.on('message', (message) => {
     try {
       const parsedMessage = JSON.parse(message.toString('utf8'));
       switch (parsedMessage.type) {
-        case 'ServerStats': {
-          const { totalPlayers, activeLobbies } =
-            lobbyManager.getLobbiesState();
-          ws.send(
-            JSON.stringify({
-              type: 'ServerStats',
-              data: {
-                playerCount: totalPlayers,
-                lobbyCount: activeLobbies
-              }
-            })
-          );
+        case MESSAGE_TYPES.CONNECTION_COUNT:
+          ws.send(createWsMessage(MESSAGE_TYPES.CONNECTION_COUNT, connectionManager.getConnectionCount()));
           break;
-        }
 
-        case 'joinLobby':
-          lobbyManager.joinOrCreateLobby(ws);
-          // Send the player their current lobby state
-          ws.send(
-            JSON.stringify({
-              type: 'lobbyState',
-              data: lobbyManager.getLobbyStateForPlayer(ws)
-            })
-          );
+        case MESSAGE_TYPES.PLAYERS_IN_LOBBY:
+          sendUpdatedLobbyCount();
           break;
-        case 'leaveLobby':
-          lobbyManager.removePlayerFromLobby(ws);
+
+        case MESSAGE_TYPES.JOIN_GAME:
+          handleJoinGame(ws);
+
           break;
-        // Add more cases as needed for other types of messages/actions
-        default:
-          console.log('Unknown message type:', parsedMessage.type);
+        case MESSAGE_TYPES.LEAVE_GAME:
+          handleLeaveGame(ws);
+          break;
       }
     } catch (error) {
       console.error('Failed to parse message:', error);
@@ -54,12 +43,61 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    console.log('Client disconnected');
-    // Remove player from their lobby on disconnect
-    lobbyManager.removePlayerFromLobby(ws);
+    handleLeaveGame(ws);
+    connectionManager.removeConnectionByWebSocket(ws);
+    sendUpdatedConnectionCount();
   });
 });
 
 server.listen(port, () => {
   console.log(`Server is listening on http://localhost:${port}`);
 });
+
+function sendUpdatedConnectionCount() {
+  connectionManager.broadcastMessage(
+    createWsMessage(MESSAGE_TYPES.CONNECTION_COUNT, connectionManager.getConnectionCount())
+  );
+}
+
+function handleLeaveGame(ws: WebSocket) {
+  const playerId = connectionManager.getConnectionId(ws);
+  if (!playerId) return;
+
+  const lobby = lobbyManager.getLobbyByPlayer(playerId);
+  if (!lobby) return;
+
+  lobbyManager.leaveLobby(playerId);
+
+  connectionManager.broadcastMessage(createWsMessage(MESSAGE_TYPES.LEAVE_GAME, lobby));
+  connectionManager.broadcastMessage(
+    createWsMessage(MESSAGE_TYPES.PLAYERS_IN_LOBBY, lobbyManager.getTotalPlayersInLobbies())
+  );
+}
+
+function handleJoinGame(ws: WebSocket) {
+  const playerId = connectionManager.getConnectionId(ws);
+  if (!playerId) return;
+
+  lobbyManager.joinLobby(playerId);
+  const lobby = lobbyManager.getLobbyByPlayer(playerId);
+  if (!lobby) return;
+
+  const playersInLobbyMessage = createWsMessage(MESSAGE_TYPES.JOIN_GAME, lobby);
+  ws.send(playersInLobbyMessage);
+  connectionManager.sendMessageToPlayers(lobby.players, playersInLobbyMessage);
+  connectionManager.broadcastMessage(
+    createWsMessage(MESSAGE_TYPES.PLAYERS_IN_LOBBY, lobbyManager.getTotalPlayersInLobbies())
+  );
+}
+
+function sendUpdatedLobbyCount() {
+  const message = JSON.stringify({
+    type: MESSAGE_TYPES.PLAYERS_IN_LOBBY,
+    data: lobbyManager.getTotalPlayersInLobbies()
+  });
+  connectionManager.broadcastMessage(message);
+}
+
+function createWsMessage(type: string, data: any) {
+  return JSON.stringify({ type, data });
+}
