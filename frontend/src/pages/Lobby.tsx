@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
 import { constants, MESSAGE_TYPES } from '../utils/constants';
 import { Link } from 'react-router-dom';
+import { Chat } from '../components/Chat';
 
 interface LobbyState {
   id: string;
@@ -25,7 +26,7 @@ export const Lobby = () => {
 
   const { sendJsonMessage, lastJsonMessage, readyState } = useWebSocket(constants.WS_URL, {
     share: true,
-    shouldReconnect: () => false,
+    shouldReconnect: () => true,
     filter: (message: MessageEvent) => {
       const { type } = JSON.parse(message.data);
       return type === MESSAGE_TYPES.JOIN_GAME || type === MESSAGE_TYPES.LEAVE_GAME;
@@ -67,6 +68,7 @@ export const Lobby = () => {
       <Link to="/">
         <button onClick={() => sendJsonMessage({ type: MESSAGE_TYPES.LEAVE_GAME, data: '' })}>Leave Lobby</button>
       </Link>
+      <Chat playerCount={lobbyState.players.length} />
     </div>
   );
 };
